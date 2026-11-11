@@ -295,6 +295,10 @@ tr.row-hidden{display:none}
 .step.done{background:var(--green-pale);color:var(--green)}
 hr{border:0;border-top:1px solid var(--line-2);margin:20px 0}
 
+/* Pencarian modul lab */
+.lab-search{flex:1 1 280px;max-width:420px;min-height:42px;border:1px solid #CAD7D4;border-radius:var(--r-md);padding:10px 12px 10px 38px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%235E7472' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 3.5 3.5'/%3E%3C/svg%3E") no-repeat 13px center;outline:none;transition:border-color .2s,box-shadow .2s}
+.lab-search:focus{border-color:var(--teal);box-shadow:0 0 0 4px #0F6E661F}
+
 /* ---------- Login ---------- */
 .login-page{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px;background:var(--paper)}
 .login-card{width:min(100%,980px);display:grid;grid-template-columns:1fr 1fr;background:#fff;border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:var(--float);animation:rise .6s var(--ease) both}

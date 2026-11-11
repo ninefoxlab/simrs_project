@@ -9,6 +9,7 @@ return [
  'nursing'=>['label'=>'Keperawatan','permission'=>'nursing','description'=>'Catatan keperawatan, tanda vital, dan monitoring.','tables'=>['catatan_keperawatan','tanda_vital','monitoring']],
  'cpoe'=>['label'=>'Order Medis (CPOE)','permission'=>'cpoe','description'=>'Order layanan, detail, dan verifikasi.','tables'=>['order_layanan','detail_order','verifikasi_order']],
  'laboratory'=>['label'=>'Laboratorium','permission'=>'laboratory','description'=>'Parameter dan hasil pemeriksaan laboratorium.','tables'=>['parameter_lab','hasil_lab','verifikasi_order']],
+ 'lab_results'=>['label'=>'Hasil Laboratorium','permission'=>'emr','description'=>'Hasil pemeriksaan laboratorium berstatus VALIDATED/FINAL untuk pasien Anda.','tables'=>[]],
  'radiology'=>['label'=>'Radiologi','permission'=>'radiology','description'=>'Pemeriksaan dan hasil radiologi.','tables'=>['pemeriksaan_radiologi','hasil_radiologi']],
  'pharmacy'=>['label'=>'Farmasi','permission'=>'pharmacy','description'=>'Supplier, obat, batch obat, resep, mutasi, dan retur.','tables'=>['supplier','obat','batch_obat','resep','resep_item','mutasi_stok','retur_obat']],
  'billing'=>['label'=>'Billing & Kasir','permission'=>'billing','description'=>'Tagihan, detail tagihan, pembayaran, klaim, dan kuitansi.','tables'=>['tagihan','detail_tagihan','pembayaran','klaim','kuitansi']],

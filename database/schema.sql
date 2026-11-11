@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS parameter_lab (
   kategori VARCHAR(100) NOT NULL,
   satuan VARCHAR(30) NULL,
   nilai_rujukan VARCHAR(255) NULL,
+  jenis_spesimen VARCHAR(80) NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'Aktif'
 ) ENGINE=InnoDB;
 
@@ -577,6 +578,45 @@ CREATE TABLE IF NOT EXISTS simrs_wf_results (
   CONSTRAINT fk_wfres_order FOREIGN KEY (id_order) REFERENCES simrs_wf_orders(id_order)
 ) ENGINE=InnoDB;
 
+-- Modul Laboratorium sesuai SOP/SIMRS/001/2026
+-- Rincian pemeriksaan per order (satu order bisa berisi beberapa pemeriksaan).
+CREATE TABLE IF NOT EXISTS simrs_wf_lab_items (
+  id_lab_item INT AUTO_INCREMENT PRIMARY KEY,
+  id_order INT NOT NULL,
+  id_parameter INT NULL,
+  kode_parameter VARCHAR(30) NULL,
+  nama_pemeriksaan VARCHAR(150) NOT NULL,
+  jenis_spesimen VARCHAR(80) NULL,
+  nilai_hasil VARCHAR(255) NULL,
+  satuan VARCHAR(30) NULL,
+  nilai_rujukan VARCHAR(255) NULL,
+  penanda VARCHAR(20) NULL,
+  waktu_pemeriksaan DATETIME NULL,
+  diinput_oleh_user INT NULL,
+  diperbarui_pada DATETIME NULL,
+  KEY idx_labitem_order (id_order),
+  CONSTRAINT fk_labitem_order FOREIGN KEY (id_order) REFERENCES simrs_wf_orders(id_order)
+) ENGINE=InnoDB;
+
+-- Riwayat verifikasi/penerimaan spesimen (langkah 4 SOP). Penolakan tetap tersimpan sebagai riwayat.
+CREATE TABLE IF NOT EXISTS simrs_wf_lab_specimens (
+  id_specimen INT AUTO_INCREMENT PRIMARY KEY,
+  id_order INT NOT NULL,
+  jenis_spesimen VARCHAR(80) NOT NULL,
+  no_label VARCHAR(80) NULL,
+  cek_identitas TINYINT(1) NOT NULL DEFAULT 0,
+  cek_label TINYINT(1) NOT NULL DEFAULT 0,
+  cek_jenis TINYINT(1) NOT NULL DEFAULT 0,
+  cek_kesesuaian TINYINT(1) NOT NULL DEFAULT 0,
+  status_spesimen ENUM('accepted','rejected') NOT NULL,
+  alasan_penolakan TEXT NULL,
+  tindak_lanjut TEXT NULL,
+  diverifikasi_oleh_user INT NOT NULL,
+  waktu_verifikasi DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_specimen_order (id_order),
+  CONSTRAINT fk_specimen_order FOREIGN KEY (id_order) REFERENCES simrs_wf_orders(id_order)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS simrs_wf_dispenses (
   id_dispense INT AUTO_INCREMENT PRIMARY KEY,
   id_order INT NOT NULL, jumlah_diserahkan DECIMAL(15,2) NOT NULL, catatan TEXT NULL,
@@ -652,7 +692,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- =========================================================
 INSERT IGNORE INTO roles (kode_role, nama_role) VALUES
  ('IT_ADMIN','IT Administrator'),('DOKTER','Dokter'),('ADMISI','Petugas Admisi'),('PERAWAT','Perawat'),
- ('APOTEKER','Apoteker'),('ATLM','Analis Laboratorium (ATLM)'),('DOKTER_LAB','Dokter Laboratorium'),
+ ('APOTEKER','Apoteker'),('ATLM','Petugas Laboratorium (ATLM)'),('DOKTER_LAB','Dokter Laboratorium'),
  ('VALIDATOR_LAB','Validator Laboratorium'),('RADIOGRAFER','Radiografer'),('DOKTER_RAD','Dokter Radiologi'),
  ('KASIR','Kasir'),('ASURANSI','Petugas Asuransi'),('PETUGAS_GUDANG','Petugas Gudang'),
  ('KEPALA_GUDANG','Kepala Gudang'),('PIMPINAN','Pimpinan');

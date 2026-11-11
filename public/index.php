@@ -18,7 +18,7 @@ foreach ($moduleDefinitions as $key=>$definition) $menuLabels[$key] = $definitio
 $pageTitle = $menuLabels[$page] ?? 'Dashboard';
 $csrf = csrf_token();
 $flash = flash_get();
-$workflowPages = ['outpatient','inpatient','igd','emr','nursing','cpoe','laboratory','radiology','pharmacy','billing','inventory','reporting'];
+$workflowPages = ['outpatient','inpatient','igd','emr','nursing','cpoe','laboratory','lab_results','radiology','pharmacy','billing','inventory','reporting'];
 function nav_icon(string $route): string {
     $p = [
         'dashboard'=>'<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
@@ -33,6 +33,7 @@ function nav_icon(string $route): string {
         'emr'=>'<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
         'nursing'=>'<path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/><path d="M9 12h2l1-2 1.5 4 1-2h1.5"/>',
         'cpoe'=>'<path d="M21 3 10 14M21 3l-7 18-4-7-7-4z"/>',
+        'lab_results'=>'<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/><path d="m9 14 2 2 4-4"/>',
         'laboratory'=>'<path d="M9 3h6M10 3v6l-5.5 9.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.5L14 9V3"/><path d="M7 15h10"/>',
         'radiology'=>'<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="12" r="3.5"/>',
         'pharmacy'=>'<rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="m9.5 9.5 5 5"/>',

@@ -16,7 +16,9 @@ function wfa_redirect(string $page, string $message, string $type='success'): ne
     flash_set($type, $message);
     $url = APP_BASE_URL . '/index.php?page=' . rawurlencode($page);
     $visitId = (int)($_POST['id_kunjungan'] ?? 0);
-    if ($visitId > 0) $url .= '&id_kunjungan=' . $visitId;
+    $orderId = (int)($_POST['id_order'] ?? 0);
+    if ($page === 'laboratory' && $orderId > 0) $url .= '&id_order=' . $orderId;
+    elseif ($visitId > 0) $url .= '&id_kunjungan=' . $visitId;
     redirect_to($url);
 }
 function wfa_text(string $key, int $max=20000): string {
@@ -66,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !csrf_check($_POST['csrf'] ?? null)
 $action=(string)($_POST['action']??'');
 $idVisit=(int)($_POST['id_kunjungan']??0);
 $page=(string)($_POST['return_page']??'emr');
-$allowedPages=['emr','outpatient','inpatient','igd','nursing','cpoe','laboratory','radiology','pharmacy','billing','inventory','reporting'];
+$allowedPages=['emr','outpatient','inpatient','igd','nursing','cpoe','laboratory','lab_results','radiology','pharmacy','billing','inventory','reporting'];
 if (!in_array($page,$allowedPages,true)) $page='emr';
 
 try {
@@ -151,7 +153,8 @@ try {
         $emrQ=$pdo->prepare('SELECT status_emr FROM simrs_wf_emr WHERE id_kunjungan=?'); $emrQ->execute([$idVisit]); $emrStatus=$emrQ->fetchColumn();
         if($emrStatus===false) throw new RuntimeException('Isi dan simpan draft asesmen EMR terlebih dahulu sebelum membuat order.');
         if($emrStatus==='signed') throw new RuntimeException('EMR sudah ditandatangani. Permintaan layanan baru harus melalui prosedur addendum/perintah lanjutan yang ditetapkan RS.');
-        $type=(string)($_POST['jenis_order']??''); $allowed=['LAB','RADIOLOGI','FARMASI','TINDAKAN','KONSULTASI'];
+        $type=(string)($_POST['jenis_order']??''); $allowed=['RADIOLOGI','FARMASI','TINDAKAN','KONSULTASI'];
+        if($type==='LAB') throw new RuntimeException('Order laboratorium dibuat melalui tombol "Order Laboratorium".');
         if(!in_array($type,$allowed,true)) throw new RuntimeException('Jenis order tidak valid.');
         $name=wfa_text('nama_layanan',255); if($name==='')throw new RuntimeException('Nama pemeriksaan, obat, atau tindakan wajib diisi.');
         $priority=(string)($_POST['prioritas']??'Normal');if(!in_array($priority,['Normal','Segera','Cito'],true))throw new RuntimeException('Prioritas tidak valid.');
@@ -172,7 +175,7 @@ try {
     if ($action === 'accept_order') {
         $order=wfa_order($pdo,(int)($_POST['id_order']??0),$idVisit);
         $type=$order['jenis_order'];
-        if($type==='LAB') wfa_need($roles,['ATLM']);
+        if($type==='LAB') throw new RuntimeException('Order laboratorium diterima melalui verifikasi spesimen.');
         elseif($type==='RADIOLOGI') wfa_need($roles,['RADIOGRAFER']);
         elseif($type==='FARMASI') wfa_need($roles,['APOTEKER']);
         elseif(in_array($type,['TINDAKAN','KONSULTASI'],true)) wfa_need($roles,['PERAWAT','DOKTER']);
@@ -183,50 +186,129 @@ try {
         wfa_redirect($type==='LAB'?'laboratory':($type==='RADIOLOGI'?'radiology':($type==='FARMASI'?'pharmacy':'nursing')),'Order diterima dan masuk status dalam proses.');
     }
 
-    if ($action === 'submit_lab_result') {
-        wfa_need($roles,['ATLM']); $order=wfa_order($pdo,(int)($_POST['id_order']??0),$idVisit);
-        if($order['jenis_order']!=='LAB'||$order['status_order']!=='in_progress')throw new RuntimeException('Order laboratorium harus diterima ATLM sebelum hasil diinput.');
-        $text=wfa_text('hasil_teks',30000);if($text==='')throw new RuntimeException('Hasil laboratorium wajib diisi.');
-        $q=$pdo->prepare("INSERT INTO simrs_wf_results (id_order,hasil_teks,hasil_angka,satuan,nilai_rujukan,penanda_abnormal,catatan_validator,status_hasil,diinput_oleh_user,waktu_input) VALUES (?,?,?,?,?,?,NULL,'result_entered',?,NOW()) ON DUPLICATE KEY UPDATE hasil_teks=VALUES(hasil_teks),hasil_angka=VALUES(hasil_angka),satuan=VALUES(satuan),nilai_rujukan=VALUES(nilai_rujukan),penanda_abnormal=VALUES(penanda_abnormal),status_hasil='result_entered',diinput_oleh_user=VALUES(diinput_oleh_user),waktu_input=NOW(),direview_oleh_user=NULL,divalidasi_oleh_user=NULL,waktu_review=NULL,waktu_validasi=NULL");
-        $q->execute([$order['id_order'],$text,wfa_text('hasil_angka',100),wfa_text('satuan',80),wfa_text('nilai_rujukan',160),wfa_text('penanda_abnormal',40),$uid]);
-        $pdo->prepare("UPDATE simrs_wf_orders SET status_order='result_entered',diperbarui_pada=NOW() WHERE id_order=?")->execute([$order['id_order']]);
-        wfa_audit($pdo,$uid,'ENTER_LAB_RESULT','simrs_wf_results','Input hasil LAB '.$order['no_order']);
-        wfa_redirect('laboratory','Hasil laboratorium tersimpan dan masuk antrean review Dokter Laboratorium.');
+    // ===== Modul Laboratorium (SOP/SIMRS/001/2026) =====
+    $labValidators=['VALIDATOR_LAB','DOKTER_LAB'];
+    $labOrder=function(int $id) use ($pdo,$idVisit): array {
+        $o=wfa_order($pdo,$id,$idVisit);
+        if($o['jenis_order']!=='LAB') throw new RuntimeException('Order bukan laboratorium.');
+        return $o;
+    };
+
+    // Langkah 1–2: Dokter/DPJP memilih jenis pemeriksaan + informasi klinis, lalu Kirim Order.
+    if ($action === 'create_lab_order') {
+        wfa_need($roles,['DOKTER']); $visit=wfa_visit($pdo,$idVisit,$roles,$user);
+        $emrQ=$pdo->prepare('SELECT status_emr FROM simrs_wf_emr WHERE id_kunjungan=?'); $emrQ->execute([$idVisit]); $emrStatus=$emrQ->fetchColumn();
+        if($emrStatus===false) throw new RuntimeException('Isi dan simpan draft asesmen EMR terlebih dahulu sebelum membuat order.');
+        if($emrStatus==='signed') throw new RuntimeException('EMR sudah ditandatangani. Order baru harus melalui prosedur addendum yang ditetapkan RS.');
+        $ids=array_values(array_unique(array_filter(array_map('intval',(array)($_POST['id_parameter']??[])))));
+        if(!$ids) throw new RuntimeException('Pilih minimal satu jenis pemeriksaan laboratorium.');
+        $clinical=wfa_text('informasi_klinis',6000); if($clinical==='') throw new RuntimeException('Informasi klinis wajib diisi.');
+        $priority=(string)($_POST['prioritas']??'Normal'); if(!in_array($priority,['Normal','Segera','Cito'],true)) throw new RuntimeException('Prioritas tidak valid.');
+        $in=implode(',',array_fill(0,count($ids),'?'));
+        $q=$pdo->prepare("SELECT * FROM parameter_lab WHERE id_parameter IN ($in) ORDER BY kategori,nama_pemeriksaan"); $q->execute($ids); $params=$q->fetchAll(PDO::FETCH_ASSOC);
+        if(count($params)!==count($ids)) throw new RuntimeException('Jenis pemeriksaan tidak ditemukan di master parameter laboratorium.');
+        $no='LAB-'.date('Ymd').'-'.strtoupper(bin2hex(random_bytes(3)));
+        $targetUnit=null; try { $uq=$pdo->query("SELECT id_unit FROM unit WHERE LOWER(nama_unit) LIKE '%laboratorium%' ORDER BY id_unit LIMIT 1"); $f=$uq->fetchColumn(); if($f!==false)$targetUnit=(int)$f; } catch(Throwable $ignore) {}
+        $pdo->beginTransaction();
+        $pdo->prepare("INSERT INTO simrs_wf_orders (id_kunjungan,no_order,jenis_order,kode_layanan,nama_layanan,instruksi,prioritas,jumlah,satuan_jumlah,id_pembuat_user,id_unit_tujuan,status_order) VALUES (?,?,'LAB',?,?,?,?,?,'pemeriksaan',?,?,'ordered')")
+            ->execute([$idVisit,$no,implode(', ',array_column($params,'kode_parameter')),implode(', ',array_column($params,'nama_pemeriksaan')),$clinical,$priority,count($params),$uid,$targetUnit]);
+        $orderId=(int)$pdo->lastInsertId();
+        $ins=$pdo->prepare('INSERT INTO simrs_wf_lab_items (id_order,id_parameter,kode_parameter,nama_pemeriksaan,jenis_spesimen,satuan,nilai_rujukan) VALUES (?,?,?,?,?,?,?)');
+        foreach($params as $pr) $ins->execute([$orderId,$pr['id_parameter'],$pr['kode_parameter'],$pr['nama_pemeriksaan'],$pr['jenis_spesimen']??null,$pr['satuan'],$pr['nilai_rujukan']]);
+        $pdo->commit();
+        wfa_audit($pdo,$uid,'CREATE_LAB_ORDER','simrs_wf_orders','Order laboratorium '.$no.' ('.count($params).' pemeriksaan) kunjungan '.$idVisit);
+        wfa_redirect('emr','Order laboratorium terkirim. Nomor order: '.$no.'.');
     }
 
-    if ($action === 'review_lab_result') {
-        wfa_need($roles,['DOKTER_LAB']); $order=wfa_order($pdo,(int)($_POST['id_order']??0),$idVisit);
-        if($order['jenis_order']!=='LAB')throw new RuntimeException('Order bukan laboratorium.');
-        $comment=wfa_text('catatan_reviewer',6000);
-        $q=$pdo->prepare("UPDATE simrs_wf_results SET status_hasil='reviewed',catatan_reviewer=?,direview_oleh_user=?,waktu_review=NOW() WHERE id_order=? AND status_hasil='result_entered'");$q->execute([$comment,$uid,$order['id_order']]);
-        if(!$q->rowCount())throw new RuntimeException('Hasil belum diinput oleh ATLM atau sudah direview.');
-        wfa_audit($pdo,$uid,'REVIEW_LAB_RESULT','simrs_wf_results','Review hasil LAB '.$order['no_order']);
-        wfa_redirect('laboratory','Hasil selesai direview dan menunggu validasi final.');
+    // Langkah 4: verifikasi identitas, label, jenis & kesesuaian spesimen → diterima (IN_PROGRESS) atau REJECTED.
+    if ($action === 'verify_specimen') {
+        wfa_need($roles,['ATLM']); $order=$labOrder((int)($_POST['id_order']??0));
+        if(!in_array($order['status_order'],['ordered','rejected'],true)) throw new RuntimeException('Spesimen untuk order ini sudah diterima.');
+        $type=wfa_text('jenis_spesimen',80); $label=wfa_text('no_label',80);
+        $checks=[]; foreach(['cek_identitas','cek_label','cek_jenis','cek_kesesuaian'] as $c) $checks[$c]=!empty($_POST[$c])?1:0;
+        $decision=(string)($_POST['keputusan']??'');
+        if($type==='') throw new RuntimeException('Jenis spesimen wajib diisi.');
+        if($decision==='accepted') {
+            if(in_array(0,$checks,true)) throw new RuntimeException('Spesimen hanya dapat diterima jika identitas pasien, label, jenis, dan kesesuaian spesimen sudah diverifikasi semua.');
+            $reason=''; $follow='';
+        } elseif($decision==='rejected') {
+            $reason=wfa_text('alasan_penolakan',4000); $follow=wfa_text('tindak_lanjut',4000);
+            if($reason==='') throw new RuntimeException('Alasan penolakan spesimen wajib diisi.');
+        } else throw new RuntimeException('Pilih keputusan: spesimen sesuai atau ditolak.');
+        $pdo->beginTransaction();
+        $pdo->prepare('INSERT INTO simrs_wf_lab_specimens (id_order,jenis_spesimen,no_label,cek_identitas,cek_label,cek_jenis,cek_kesesuaian,status_spesimen,alasan_penolakan,tindak_lanjut,diverifikasi_oleh_user) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+            ->execute([$order['id_order'],$type,$label,$checks['cek_identitas'],$checks['cek_label'],$checks['cek_jenis'],$checks['cek_kesesuaian'],$decision,$reason?:null,$follow?:null,$uid]);
+        $pdo->prepare('UPDATE simrs_wf_orders SET status_order=?,diperbarui_pada=NOW() WHERE id_order=?')->execute([$decision==='accepted'?'in_progress':'rejected',$order['id_order']]);
+        $pdo->commit();
+        wfa_audit($pdo,$uid,$decision==='accepted'?'ACCEPT_LAB_SPECIMEN':'REJECT_LAB_SPECIMEN','simrs_wf_lab_specimens',($decision==='accepted'?'Spesimen diterima ':'Spesimen ditolak ').$order['no_order'].($reason?': '.$reason:''));
+        wfa_redirect('laboratory',$decision==='accepted'?'Spesimen diterima. Status pemeriksaan: IN_PROGRESS.':'Spesimen ditolak (REJECTED). Lakukan tindak lanjut, lalu verifikasi ulang spesimen pengganti.',$decision==='accepted'?'success':'warning');
     }
 
-    if ($action === 'request_lab_revision') {
-        wfa_need($roles,['DOKTER_LAB']);
-        $order=wfa_order($pdo,(int)($_POST['id_order']??0),$idVisit);
-        if($order['jenis_order']!=='LAB')throw new RuntimeException('Order bukan laboratorium.');
-        $note=wfa_text('catatan_reviewer',6000);
-        if($note==='')throw new RuntimeException('Alasan pengembalian hasil kepada ATLM wajib diisi.');
-        $q=$pdo->prepare("UPDATE simrs_wf_results SET status_hasil='revision_requested',catatan_reviewer=?,direview_oleh_user=?,waktu_review=NOW() WHERE id_order=? AND status_hasil='result_entered'");
-        $q->execute([$note,$uid,$order['id_order']]);
-        if(!$q->rowCount())throw new RuntimeException('Hasil belum tersedia untuk dikembalikan atau sudah diproses.');
-        $pdo->prepare("UPDATE simrs_wf_orders SET status_order='in_progress',diperbarui_pada=NOW() WHERE id_order=?")->execute([$order['id_order']]);
-        wfa_audit($pdo,$uid,'REQUEST_LAB_RESULT_REVISION','simrs_wf_results','Meminta koreksi hasil LAB '.$order['no_order']);
-        wfa_redirect('laboratory','Hasil dikembalikan kepada ATLM untuk koreksi.');
+    // Langkah 6–7: Input Hasil (boleh diulang untuk pemeriksaan ulang sebelum dikirim ke validator).
+    if ($action === 'save_lab_results') {
+        wfa_need($roles,['ATLM']); $order=$labOrder((int)($_POST['id_order']??0));
+        if($order['status_order']!=='in_progress') throw new RuntimeException('Hasil hanya dapat diinput setelah spesimen diterima dan sebelum dikirim ke validator.');
+        $vals=(array)($_POST['nilai']??[]); $flags=(array)($_POST['penanda']??[]);
+        $q=$pdo->prepare('SELECT id_lab_item FROM simrs_wf_lab_items WHERE id_order=?'); $q->execute([$order['id_order']]); $itemIds=array_map('intval',$q->fetchAll(PDO::FETCH_COLUMN));
+        $time=wfa_text('waktu_pemeriksaan',30); $time=$time===''?date('Y-m-d H:i:s'):date('Y-m-d H:i:s',strtotime($time));
+        $note=wfa_text('catatan_hasil',8000);
+        $pdo->beginTransaction();
+        $up=$pdo->prepare('UPDATE simrs_wf_lab_items SET nilai_hasil=?,penanda=?,waktu_pemeriksaan=?,diinput_oleh_user=?,diperbarui_pada=NOW() WHERE id_lab_item=? AND id_order=?');
+        $filled=0;
+        foreach($itemIds as $iid){
+            $v=trim((string)($vals[$iid]??'')); $f=(string)($flags[$iid]??'');
+            if(!in_array($f,['','normal','low','high','critical'],true)) $f='';
+            if(strlen($v)>255) throw new RuntimeException('Nilai hasil terlalu panjang.');
+            if($v!=='') $filled++;
+            $up->execute([$v===''?null:$v,$f===''?null:$f,$time,$uid,$iid,$order['id_order']]);
+        }
+        if(!$filled && $note==='') throw new RuntimeException('Isi minimal satu nilai hasil pemeriksaan.');
+        $pdo->prepare("INSERT INTO simrs_wf_results (id_order,hasil_teks,status_hasil,diinput_oleh_user,waktu_input) VALUES (?,?,'result_entered',?,NOW()) ON DUPLICATE KEY UPDATE hasil_teks=VALUES(hasil_teks),status_hasil='result_entered',diinput_oleh_user=VALUES(diinput_oleh_user),waktu_input=NOW()")
+            ->execute([$order['id_order'],$note,$uid]);
+        $pdo->commit();
+        wfa_audit($pdo,$uid,'ENTER_LAB_RESULT','simrs_wf_lab_items','Input/perubahan hasil '.$order['no_order'].' ('.$filled.' nilai)');
+        wfa_redirect('laboratory','Hasil tersimpan. Periksa kelengkapan dan kewajaran, lalu kirim untuk validasi.');
     }
 
+    // Langkah 7→8: ATLM menyatakan hasil lengkap & wajar, lalu mengirim ke validator.
+    if ($action === 'submit_lab_validation') {
+        wfa_need($roles,['ATLM']); $order=$labOrder((int)($_POST['id_order']??0));
+        if($order['status_order']!=='in_progress') throw new RuntimeException('Order belum siap dikirim untuk validasi.');
+        if(empty($_POST['cek_kelengkapan'])||empty($_POST['cek_kewajaran'])) throw new RuntimeException('Centang pemeriksaan kelengkapan dan kewajaran hasil sebelum mengirim ke validator.');
+        $q=$pdo->prepare("SELECT COUNT(*) FROM simrs_wf_lab_items WHERE id_order=? AND (nilai_hasil IS NULL OR nilai_hasil='')"); $q->execute([$order['id_order']]);
+        if((int)$q->fetchColumn()>0) throw new RuntimeException('Masih ada pemeriksaan yang belum diisi hasilnya.');
+        $q=$pdo->prepare('SELECT COUNT(*) FROM simrs_wf_results WHERE id_order=?'); $q->execute([$order['id_order']]);
+        if(!(int)$q->fetchColumn()) throw new RuntimeException('Simpan hasil pemeriksaan terlebih dahulu.');
+        $pdo->beginTransaction();
+        $pdo->prepare("UPDATE simrs_wf_results SET status_hasil='waiting_validation',catatan_validator=NULL WHERE id_order=?")->execute([$order['id_order']]);
+        $pdo->prepare("UPDATE simrs_wf_orders SET status_order='waiting_validation',diperbarui_pada=NOW() WHERE id_order=?")->execute([$order['id_order']]);
+        $pdo->commit();
+        wfa_audit($pdo,$uid,'SUBMIT_LAB_FOR_VALIDATION','simrs_wf_results','Hasil '.$order['no_order'].' dikirim ke validator');
+        wfa_redirect('laboratory','Hasil dikirim ke validator. Status: menunggu validasi.');
+    }
+
+    // Langkah 9: Validator memilih Validasi (VALIDATED/FINAL) …
     if ($action === 'validate_lab_result') {
-        wfa_need($roles,['VALIDATOR_LAB']); $order=wfa_order($pdo,(int)($_POST['id_order']??0),$idVisit);
-        if($order['jenis_order']!=='LAB')throw new RuntimeException('Order bukan laboratorium.');
+        wfa_need($roles,$labValidators); $order=$labOrder((int)($_POST['id_order']??0));
         $comment=wfa_text('catatan_validator',6000);
-        $q=$pdo->prepare("UPDATE simrs_wf_results SET status_hasil='validated',catatan_validator=?,divalidasi_oleh_user=?,waktu_validasi=NOW() WHERE id_order=? AND status_hasil='reviewed'");$q->execute([$comment,$uid,$order['id_order']]);
-        if(!$q->rowCount())throw new RuntimeException('Hasil harus direview Dokter Laboratorium terlebih dahulu.');
+        $q=$pdo->prepare("UPDATE simrs_wf_results SET status_hasil='validated',catatan_validator=?,divalidasi_oleh_user=?,waktu_validasi=NOW() WHERE id_order=? AND status_hasil='waiting_validation'");
+        $q->execute([$comment,$uid,$order['id_order']]);
+        if(!$q->rowCount()) throw new RuntimeException('Hasil belum dikirim ATLM untuk validasi atau sudah diproses.');
         $pdo->prepare("UPDATE simrs_wf_orders SET status_order='completed',diperbarui_pada=NOW() WHERE id_order=?")->execute([$order['id_order']]);
-        wfa_audit($pdo,$uid,'VALIDATE_LAB_RESULT','simrs_wf_results','Validasi final LAB '.$order['no_order']);
-        wfa_redirect('laboratory','Hasil laboratorium divalidasi final dan tersedia bagi dokter.');
+        wfa_audit($pdo,$uid,'VALIDATE_LAB_RESULT','simrs_wf_results','Validasi final (VALIDATED/FINAL) '.$order['no_order']);
+        wfa_redirect('laboratory','Hasil laboratorium VALIDATED/FINAL dan tersimpan di Rekam Medis Elektronik pasien.');
+    }
+
+    // … atau Kembalikan ke ATLM untuk koreksi (kembali ke langkah 6).
+    if ($action === 'return_lab_result') {
+        wfa_need($roles,$labValidators); $order=$labOrder((int)($_POST['id_order']??0));
+        $note=wfa_text('catatan_validator',6000); if($note==='') throw new RuntimeException('Alasan pengembalian kepada ATLM wajib diisi.');
+        $q=$pdo->prepare("UPDATE simrs_wf_results SET status_hasil='returned',catatan_validator=?,direview_oleh_user=?,waktu_review=NOW() WHERE id_order=? AND status_hasil='waiting_validation'");
+        $q->execute([$note,$uid,$order['id_order']]);
+        if(!$q->rowCount()) throw new RuntimeException('Hasil tidak dalam status menunggu validasi.');
+        $pdo->prepare("UPDATE simrs_wf_orders SET status_order='in_progress',diperbarui_pada=NOW() WHERE id_order=?")->execute([$order['id_order']]);
+        wfa_audit($pdo,$uid,'RETURN_LAB_RESULT','simrs_wf_results','Hasil '.$order['no_order'].' dikembalikan ke ATLM: '.$note);
+        wfa_redirect('laboratory','Hasil dikembalikan kepada ATLM untuk dikoreksi.','warning');
     }
 
     if ($action === 'submit_radiology_result') {

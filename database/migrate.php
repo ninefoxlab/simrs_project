@@ -26,6 +26,24 @@ foreach ($statements as $stmt) {
     $pdo->exec($stmt);
     $done++;
 }
+// Upgrade database lama: kolom yang ditambahkan setelah rilis pertama.
+$addColumns = [
+    ['parameter_lab', 'jenis_spesimen', 'VARCHAR(80) NULL AFTER nilai_rujukan'],
+];
+foreach ($addColumns as [$table, $column, $definition]) {
+    $q = $pdo->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?');
+    $q->execute([$table, $column]);
+    if (!(int)$q->fetchColumn()) { $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}"); echo "+ kolom {$table}.{$column}\n"; }
+}
+// Jenis spesimen default per kategori pemeriksaan (bisa diubah di Master Data).
+$pdo->exec("UPDATE parameter_lab SET jenis_spesimen = CASE
+    WHEN LOWER(kategori) LIKE '%hematologi%' THEN 'Darah EDTA'
+    WHEN LOWER(kategori) LIKE '%urin%' THEN 'Urin'
+    WHEN LOWER(kategori) LIKE '%feses%' THEN 'Feses'
+    ELSE 'Serum' END
+  WHERE jenis_spesimen IS NULL OR jenis_spesimen = ''");
+$pdo->exec("UPDATE roles SET nama_role = 'Petugas Laboratorium (ATLM)' WHERE kode_role = 'ATLM'");
+
 $tables = (int)$pdo->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn();
 $perms = (int)$pdo->query('SELECT COUNT(*) FROM permissions')->fetchColumn();
 echo "Selesai: {$done} pernyataan dijalankan di `{$dbName}` ({$tables} tabel, {$perms} permission).\n";

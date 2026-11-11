@@ -2,7 +2,7 @@
 // Tampilan dibatasi berdasarkan role; permission backend dicek terpisah.
 $roleMenus = [
  'IT_ADMIN'=>['dashboard','users','master','audit'],
- 'DOKTER'=>['dashboard','outpatient','inpatient','igd','emr','cpoe'],
+ 'DOKTER'=>['dashboard','outpatient','inpatient','igd','emr','lab_results','cpoe'],
  'ADMISI'=>['dashboard','registration','scheduling'],
  'PERAWAT'=>['dashboard','inpatient','igd','nursing','cpoe'],
  'APOTEKER'=>['dashboard','pharmacy'],
