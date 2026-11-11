@@ -64,6 +64,32 @@ php database/seed_users.php
 
 Login sebagai `admin` dengan password dari `AKUN_DEMO_CLOUD.md`, lalu buka `https://<project>.vercel.app/isi_master_data_demo.php` dan klik tombolnya.
 
+## Catatan dari deploy pertama (simrsproject.vercel.app)
+
+- **Cara tercepat:** pakai integrasi Vercel Marketplace **TiDB Cloud** (vercel.com/marketplace/tidb-cloud). Integrasi ini mengisi `TIDB_HOST`, `TIDB_PORT`, `TIDB_USER`, `TIDB_PASSWORD`, `TIDB_DATABASE` secara otomatis, dan aplikasi membacanya tanpa perlu `DB_*`.
+- Integrasi hanya menampilkan cluster yang berada di dalam **TiDB Cloud Project**. Buat project dulu di konsol TiDB, lalu pindahkan cluster ke project itu (menu ⋯ → Move).
+- Isi `DB_NAME=simrs_db` di Vercel, karena `TIDB_DATABASE` defaultnya `sys`.
+- Variabel yang ditandai **Sensitive** di Vercel tidak bisa ditarik dengan `vercel env pull` (nilainya menjadi `[SENSITIVE]`). Untuk migrasi dari laptop:
+
+  ```bash
+  vercel link --yes --project simrs_project
+  ```
+
+  ```bash
+  vercel env pull .env.cloud --environment production --yes
+  ```
+
+  ```bash
+  DB_NAME=simrs_db SIMRS_ENV_FILE=.env.cloud php database/migrate.php
+  ```
+
+  ```bash
+  DB_NAME=simrs_db SIMRS_ENV_FILE=.env.cloud php database/seed_users.php
+  ```
+
+  `.env.cloud` dan `.env.local` tidak ikut di-commit maupun di-upload.
+- Setelah environment variable berubah, deploy ulang (push ke `main` atau Redeploy di dashboard).
+
 ## Catatan
 
 - `vercel-php` adalah runtime komunitas, tidak didukung resmi oleh Vercel.
