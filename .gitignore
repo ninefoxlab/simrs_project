@@ -7,3 +7,5 @@ database/AKUN_DEMO*.md
 *.log
 .env
 .env.*
+.vercel
+.env*
