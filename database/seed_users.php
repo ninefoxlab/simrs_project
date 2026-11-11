@@ -1,6 +1,7 @@
 <?php
 // Membuat satu akun demo per role. Jalankan via CLI: php database/seed_users.php
-// Password dibuat acak dan dicatat di database/AKUN_DEMO.md (khusus lokal).
+// Password dibuat acak dan dicatat di database/AKUN_DEMO.md (lokal) atau AKUN_DEMO_CLOUD.md (DB_HOST lain).
+// Keduanya tidak ikut di-commit.
 if (PHP_SAPI !== 'cli') exit('CLI only');
 require dirname(__DIR__) . '/config/database.php';
 
@@ -40,6 +41,8 @@ foreach ($accounts as [$username, $nama, $peran, $spes, $role]) {
 }
 if ($made) {
     $md = "# Akun demo SIMRS (lokal)\n\nPassword semua akun di bawah: `{$password}`\n\n| Username | Role | Nama |\n|---|---|---|\n" . implode("\n", $made) . "\n";
-    file_put_contents(__DIR__ . '/AKUN_DEMO.md', $md);
-    echo "Disimpan ke database/AKUN_DEMO.md\n";
+    $local = in_array(simrs_env('DB_HOST', '127.0.0.1'), ['127.0.0.1', 'localhost'], true);
+    $file = $local ? 'AKUN_DEMO.md' : 'AKUN_DEMO_CLOUD.md'; // jangan timpa catatan akun lokal
+    file_put_contents(__DIR__ . '/' . $file, $md);
+    echo "Disimpan ke database/{$file}\n";
 }

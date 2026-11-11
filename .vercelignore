@@ -1,0 +1,6 @@
+.git
+.claude
+.claude-flow
+database/AKUN_DEMO*.md
+*.log
+.DS_Store

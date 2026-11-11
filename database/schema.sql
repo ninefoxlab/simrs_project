@@ -63,6 +63,13 @@ CREATE TABLE IF NOT EXISTS user_roles (
   CONSTRAINT fk_ur_role FOREIGN KEY (id_role) REFERENCES roles(id_role)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS simrs_sessions (
+  id VARCHAR(128) NOT NULL PRIMARY KEY,
+  data MEDIUMBLOB NOT NULL,
+  last_activity INT UNSIGNED NOT NULL,
+  KEY idx_sessions_activity (last_activity)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS audit_trail (
   id_audit BIGINT AUTO_INCREMENT PRIMARY KEY,
   id_pegawai INT NULL,

@@ -36,6 +36,10 @@ Sistem Informasi Manajemen Rumah Sakit berbasis PHP native + MySQL: registrasi &
 
 5. Login sebagai `admin`, lalu buka `public/isi_master_data_demo.php` untuk mengisi contoh unit, penjamin, obat, kamar, gudang, dan barang.
 
+## Deploy ke Vercel
+
+Lihat [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md): Vercel (runtime `vercel-php`) + TiDB Cloud Starter (MySQL gratis).
+
 ## Struktur
 
 | Folder | Isi |
@@ -44,7 +48,8 @@ Sistem Informasi Manajemen Rumah Sakit berbasis PHP native + MySQL: registrasi &
 | `app/` | Bootstrap, autentikasi, permission, menu, helper |
 | `app/pages/` | Halaman dashboard, pengguna, audit, modul generik, workflow pelayanan |
 | `public/` | Entry point (login, index, aksi form), aset CSS/JS, seeder demo |
-| `database/` | `schema.sql` dan `seed_users.php` |
+| `database/` | `schema.sql`, `migrate.php`, `seed_users.php` |
+| `api/`, `vercel.json` | Pintu masuk & konfigurasi untuk Vercel |
 
 ## Catatan
 
