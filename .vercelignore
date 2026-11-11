@@ -4,3 +4,5 @@
 database/AKUN_DEMO*.md
 *.log
 .DS_Store
+.env
+.env.*

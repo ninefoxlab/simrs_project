@@ -5,3 +5,5 @@ database/AKUN_DEMO*.md
 .claude-flow/
 .DS_Store
 *.log
+.env
+.env.*
