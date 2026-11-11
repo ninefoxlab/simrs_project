@@ -1,0 +1,7 @@
+# Kredensial lokal (password akun demo)
+database/AKUN_DEMO.md
+# Alat lokal
+.claude/
+.claude-flow/
+.DS_Store
+*.log
